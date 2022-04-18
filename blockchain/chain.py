@@ -5,6 +5,8 @@ from typing import List
 
 from flask import Flask
 
+from blockchain import to_json
+
 
 class Transaction:
     def __init__(self, orig: str, dest: str, amount: float):
@@ -12,11 +14,12 @@ class Transaction:
         self.dest = dest
         self.amount = amount
 
+    def __repr__(self):
+        return str(to_json(self))
+
     def hash(self) -> bytes:
-        m = hashlib.md5()
-        m.update(self.orig.encode('UTF8'))
-        m.update(self.dest.encode('UTF8'))
-        m.update(struct.pack('!d', self.amount))
+        m = hashlib.sha3_256()
+        m.update(repr(self).encode('UTF8'))
         return m.digest()
 
 
@@ -27,14 +30,12 @@ class Block:
         self.previous_hash = previous_hash
         self.proof = 0
 
+    def __repr__(self):
+        return str(to_json(self))
+
     def hash(self) -> bytes:
-        m = hashlib.md5()
-        m.update(struct.pack('!d', self.timestamp))
-        if self.transactions is not None:
-            for transaction in self.transactions:
-                m.update(transaction.hash())
-        m.update(self.proof.to_bytes(16, byteorder='big'))
-        m.update(self.previous_hash)
+        m = hashlib.sha3_256()
+        m.update(repr(self).encode('UTF8'))
         return m.digest()
 
     def mine(self, length: int = 2):
@@ -64,6 +65,9 @@ class Chain:
     def add_transaction(self, orig: str, dest: str, amount: float):
         self.transactions.append(Transaction(orig, dest, amount))
 
+    def __repr__(self):
+        return str(to_json(self))
+
 
 chain = Chain()
 
@@ -73,3 +77,4 @@ if __name__ == '__main__':
     chain.add_transaction("annie", "martin", 5.0)
     chain.add_transaction("jp", "martin", 2.0)
     chain.add_block()
+    print(repr(chain))
