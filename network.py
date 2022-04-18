@@ -19,11 +19,12 @@ def announce(from_port: int, to_port: int):
 
 if __name__ == '__main__':
     node_count = 10
-    for port in range(node_count):
-        p = Process(target=launch, args=(4000 + port,))
-        p.start()
+    processes = [Process(target=launch, args=(4000 + port,)) for port in range(node_count)]
+    for p in processes:
+        p.start()  # these processes never finish
     sleep(2)
-    processes = [Process(target=announce, args=(4000 + port, 4000 + (port + 1) % node_count)) for port in range(node_count)]
+    processes = [Process(target=announce, args=(4000 + port, 4000 + (port + 1) % node_count))
+                 for port in range(node_count)]
     for p in processes:
         p.start()
     for p in processes:
