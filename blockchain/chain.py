@@ -1,5 +1,4 @@
 import hashlib
-import struct
 from time import time
 from typing import List
 

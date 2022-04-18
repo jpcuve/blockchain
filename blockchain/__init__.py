@@ -1,4 +1,5 @@
 from flask import Flask
+import logging
 
 
 def to_json(o):
@@ -16,14 +17,22 @@ def to_json(o):
     return ret
 
 
-def create_app(node_name: str = None) -> Flask:
+def create_app(node_name: str = None, port: int = 0, test: bool = False) -> Flask:
     app = Flask(__name__ if node_name is None else node_name)
+    app.port = port
+    app.development = app.config['ENV'] == 'development' or test
+    logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s',
+                        level=logging.DEBUG if app.development else logging.INFO)
 
     @app.route('/')
     def index():
         return app.name
 
+    from blockchain.bp_api import bp
+    app.register_blueprint(bp)
     from blockchain.chain import chain
     chain.init_app(app)
+    from blockchain.registry import registry
+    registry.init_app(app)
 
     return app
