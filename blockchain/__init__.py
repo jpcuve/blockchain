@@ -8,4 +8,7 @@ def create_app() -> Flask:
     def index():
         return "Blockchain"
 
+    from blockchain.chain import chain
+    chain.init_app(app)
+
     return app
