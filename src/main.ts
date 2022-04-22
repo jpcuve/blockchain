@@ -1,4 +1,6 @@
 import {Node} from './node'
 
-const node = new Node(4000)
-node.listen()
+for (let i = 0; i < 10; i++){
+    const node = new Node(`node-${i}`, 4000 + i)
+    node.listen()
+}
