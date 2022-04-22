@@ -1,8 +1,10 @@
 {
   "name": "blockchain",
   "version": "alpha",
-  "type": "module",
   "dependencies": {
     "@types/node": "^17.0.25"
+  },
+  "scripts": {
+    "start": "build/main.js start"
   }
 }
