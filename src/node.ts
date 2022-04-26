@@ -45,6 +45,11 @@ class Link {
         switch(verb){
             case 'info':
                 return this.node.info()
+            case 'test':
+                this.request('who_are_you', {}, (body: any) => {
+                    console.log(`Received this data: ${JSON.stringify(body)}`)
+                })
+                break
         }
         return {}
     }
