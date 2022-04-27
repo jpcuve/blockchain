@@ -1,12 +1,10 @@
 import {createServer, Socket} from 'net'
-import {EventEmitter} from 'events'
 
 class Link {
   static messageId: number = 500
   readonly name: string
   readonly socket: Socket
-  readonly emitter: EventEmitter = new EventEmitter()
-  readonly pending: Set<number> = new Set<number>()
+  readonly resolves: {[id: number]: (data: any) => void} = {}
 
   constructor(name: string, socket: Socket) {
     this.name = name
@@ -16,22 +14,23 @@ class Link {
       const parts = value.split('|')
       const id = Number(parts[0].trim())
       if (isNaN(id)){ // notification
-        console.log(`${this.name}: notification: ${value.trim()}`)
+        // console.log(`${this.name}: notification: ${value.trim()}`)
         this.sink(parts[1].trim(), JSON.parse(parts[2].trim()))
       } else{
         if (parts.length === 3){ // request
-          console.log(`${this.name}: request: ${value.trim()}`)
+          // console.log(`${this.name}: request: ${value.trim()}`)
           const responseBody = this.handle(parts[1].trim(), JSON.parse(parts[2].trim()))
           this.socket.write(`${id}|${JSON.stringify(responseBody)}\r\n`)
         } else {  // response
-          console.log(`${this.name}: response: ${value.trim()}`)
-          this.emitter.emit('response', id, JSON.parse(parts[1].trim()))
+          // console.log(`${this.name}: response: ${value.trim()}`)
+          this.resolves[id](JSON.parse(parts[1].trim()))
+          delete this.resolves[id]
         }
       }
     })
     setInterval(() => {
       socket.write(`*|timer|{"time":${new Date().getTime()}}\r\n`)
-    }, 60_000)
+    }, 7_000)
     this.notify('connected', {
       name: this.name,
       localAddress: socket.localAddress,
@@ -51,20 +50,10 @@ class Link {
   }
 
   query(verb: string, body: any): Promise<any>{
-    return new Promise<any>((resolve: (value: any) => void, reject: (reason?: any) => void) => {
+    return new Promise<any>((resolve: (value: any) => void) => {
       const id = Link.messageId++
       this.socket.write(`${id}|${verb}|${JSON.stringify(body)}\r\n`)
-      this.pending.add(id)
-      console.log(`${this.name}: pending: ${JSON.stringify([...this.pending])}`)
-      this.emitter.on('response', (inId: number, inVerb: string, inBody: any) => {
-        if (this.pending.has(inId)){
-          console.log(`${this.name}: removing ${inId} from pending`)
-          this.pending.delete(inId)
-          resolve(inBody)
-        } else {
-          // reject({message: `${this.name}: request not found: ${inId} (pending: ${JSON.stringify([...this.pending])})`})
-        }
-      })
+      this.resolves[id] = resolve
     })
   }
 
@@ -107,7 +96,7 @@ class Client{
       setInterval(async () => {
         try{
           const data = await link.query('some_verb', {parameterOne: 'one', parameterTwo: 'two'})
-          console.log(`Received data: ${data}`)
+          console.log(`Received data: ${JSON.stringify(data)}`)
         } catch(e: any){
           console.error(e.message)
         }
@@ -115,6 +104,8 @@ class Client{
     })
   }
 }
+
+
 
 const server = new Server(4000)
 server.listen()
