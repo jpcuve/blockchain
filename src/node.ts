@@ -3,109 +3,103 @@ import {createServer, Server, Socket} from "net";
 
 class Link {
     static messageId: number = 1
-    readonly node: Node
+    readonly name: string
     readonly socket: Socket
     readonly incoming: boolean
-    readonly requests: {[id: number]: (data: any) => void} = {}
+    readonly resolves: {[id: number]: (data: any) => void} = {}
+    buffer: string = ''
 
-    constructor(node: Node, socket: Socket, incoming: boolean) {
-        this.node = node
+    constructor(name: string, socket: Socket, incoming: boolean) {
+        this.name = name
         this.socket = socket
         this.incoming = incoming
+        socket.setEncoding('utf-8')
+        socket.on('data', (value: string) => {
+            // console.log(`${this.name}: data: ${value}`)
+            this.buffer += value
+            while (true){
+                const nl = this.buffer.indexOf('\n')
+                if (nl < 0){
+                    break
+                }
+                const parts = this.buffer.substring(0, nl).split('|')
+                this.buffer = this.buffer.substring(nl + 1)
+                const id = Number(parts[0].trim())
+                if (isNaN(id)){ // notification
+                    // console.log(`${this.name}: notification: ${value.trim()}`)
+                    this.sink(parts[1].trim(), JSON.parse(parts[2].trim()))
+                } else{
+                    if (parts.length === 3){ // request
+                        // console.log(`${this.name}: request: ${value.trim()}`)
+                        const responseBody = this.handle(parts[1].trim(), JSON.parse(parts[2].trim()))
+                        this.socket.write(`${id}|${JSON.stringify(responseBody)}\r\n`)
+                    } else {  // response
+                        // console.log(`${this.name}: response: ${value.trim()}`)
+                        this.resolves[id](JSON.parse(parts[1].trim()))
+                        delete this.resolves[id]
+                    }
+                }
+
+            }
+        })
+        this.notify('connected', {
+            name: this.name,
+            localAddress: socket.localAddress,
+            localPort: socket.localPort,
+            remoteAddress: socket.remoteAddress,
+            remotePort: socket.remotePort,
+        })
     }
 
     destroy(){
         this.socket.destroy()
     }
 
-    request(verb: string, data: any, callback: (data: any) => void){
-        const id = Link.messageId++
-        this.socket.write(`${id}|${verb}|${JSON.stringify(data)}\n`)
-        this.requests[id] = callback
+    sink(verb: string, body: any){
+        console.log(`${this.name}: sinking: ${verb} ${JSON.stringify(body)}`)
     }
 
-    dispatch(id: number, verb: string, data: any){
-        /**
-         * Either the message is:
-         *  1. A response to a previous request
-         *  2. A request to which I must respond
-         *  The case where the message does not need to be answered (id is NaN) is handled by the node
-         */
-        console.log(`${id} ${verb} ${JSON.stringify(data)}`)
-        if (id in this.requests){  // response to a request, call callback
-            this.requests[id](data)
-            delete this.requests[id]
-        } else {  // request that needs a response
-            const responseData = this.handle(verb, data)
-            this.socket.write(`${id}||${JSON.stringify(responseData)}\n`)
-        }
+    handle(verb: string, body: any): any {
+        console.log(`${this.name}: handling query: ${verb} ${JSON.stringify(body)}`)
+        return {receivedVerb: verb, receivedBody: body}
     }
 
-    handle(verb: string, data: any): any{
-        switch(verb){
-            case 'info':
-                return this.node.info()
-            case 'test':
-                this.request('who_are_you', {}, (body: any) => {
-                    console.log(`Received this data: ${JSON.stringify(body)}`)
-                })
-                break
-        }
-        return {}
+    query(verb: string, body: any): Promise<any>{
+        return new Promise<any>((resolve: (value: any) => void) => {
+            const id = Link.messageId++
+            this.socket.write(`${id}|${verb}|${JSON.stringify(body)}\r\n`)
+            this.resolves[id] = resolve
+        })
+    }
+
+    notify(verb: string, body: any){
+        this.socket.write(`*|${verb}|${JSON.stringify(body)}\r\n`)
     }
 }
 
 export class Node {
     readonly name: string
     readonly port: number
-    readonly links: Link[] = []
     readonly server: Server
+    links: Link[] = []
 
     constructor(name: string, port: number) {
         this.name = name
         this.port = port
         this.server = createServer()
             .on('connection', (socket: Socket) => {
-                this.addLink(socket, true)
+                socket.on('close', () => {
+                    this.links = this.links.filter(it => !it.socket.destroyed)
+                })
+                this.links.push(new Link(this.name, socket, true))
             })
     }
 
-    addOutgoingLink(port: number){
+    connect(port: number){
         const socket = new Socket()
         socket.connect(port, '127.0.0.1', () => {
-            this.addLink(socket, false)
+            this.links.push(new Link(this.name, socket, false))
         })
-    }
-
-    private addLink(socket: Socket, incoming: boolean){
-        socket.setEncoding('utf-8')
-        socket
-            .on('data', (buffer: string) => {
-                try{
-                    const link = this.links.find(it => it.socket === socket)
-                    const parts = buffer.split('|')
-                    const id = Number(parts[0])
-                    const verb = parts[1].trim()
-                    let data: any = {}
-                    if (parts.length > 2) try{
-                        data = JSON.parse(parts[2])
-                    } catch (e:any){
-                        // ignore
-                    }
-                    if (isNaN(id)){
-                        this.sink(verb, data)
-                    } else {
-                        link.dispatch(id, verb, data)
-                    }
-                } catch(e: any){
-                    console.error(`Protocol error: ${buffer}`)
-                }
-            })
-            .on('close', (hadError: boolean) => {
-                this.cleanup()
-            })
-        this.links.push(new Link(this, socket, incoming))
-        console.log(`${JSON.stringify(this.info())}`)
     }
 
     listen() {
@@ -113,40 +107,18 @@ export class Node {
         this.server.listen(this.port)
     }
 
-    cleanup() {
-        const index = this.links.findIndex(it => it.socket.destroyed)
-        if (index >= 0){
-            console.log("Removing link from list")
-            this.links.splice(index, 1)
-        }
-    }
-
-    sink(verb: string, data: any){
-        switch(verb){
-            case 'connect':  // connect to some other node
-                this.addOutgoingLink(data.port)
-                break
-            case 'quit':
-                this.quit()
-                break
-        }
-    }
-
-    info(): any {
-        return {
-            "name": this.name,
-            "port": this.port,
-            "links": this.links.map(it => ({
-                "incoming": it.incoming,
-                "remotePort": it.socket.remotePort,
-                "localPort": it.socket.localPort,
-            }))
-        }
-    }
-
     quit() {
         console.log(`Server ${this.name} closing`)
         this.links.forEach(it => it.destroy())
         this.server.close()
     }
+}
+
+export const createLink: (port: number) => Promise<Link> = port => {
+    return new Promise<Link>((resolve: (value: Link) => void) => {
+        const socket = new Socket()
+        socket.connect(port, '127.0.0.1', () => {
+            resolve(new Link('client', socket, false))
+        })
+    })
 }

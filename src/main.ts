@@ -1,4 +1,4 @@
-import {Node} from './node'
+import {createLink, Node} from './node'
 import {Block} from './chain'
 import {Socket} from 'net'
 
@@ -12,14 +12,12 @@ switch(args[0]){
         break
     case 'net':
         for (let i = 0; i < 10; i++){
-            const socket = new Socket()
-            socket.connect(4000 + i, '127.0.0.1', () => {
-                socket.setEncoding('utf-8')
-                for (let j = 0; j < 3; j++){
-                    socket.write(`*|connect|{"port":${4000 + ((i + j + 1) % 10)}}\n`)
-                    socket.destroy()
+            (async () => {
+                const link = await createLink(4000 + i)
+                for (let j = 0; j < 3; j++) {
+                    link.notify('connect', {port: 4000 + ((i + j + 1) % 10)})
                 }
-            })
+            })()
         }
         break
     case 'stop':
