@@ -74,7 +74,7 @@ class Server{
       this.links.push(new Link(socket))
     })
     server.on('close', (hadError: boolean) => {
-      this.links = [...this.links.filter(it => !it.socket.destroyed)]
+      this.links = this.links.filter(it => !it.socket.destroyed)
     })
   }
 }
