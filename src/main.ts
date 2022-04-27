@@ -17,6 +17,7 @@ switch(args[0]){
                 for (let j = 0; j < 3; j++) {
                     link.notify('connect', {port: 4000 + ((i + j + 1) % 10)})
                 }
+                link.destroy()
             })()
         }
         break
