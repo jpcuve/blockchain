@@ -1,56 +1,45 @@
-import {createHash} from "crypto";
-
 export class Transaction {
     readonly orig: string
     readonly dest: string
     readonly amount: number
+    readonly _hash: number
 
     constructor(orig: string, dest: string, amount: number) {
         this.orig = orig
         this.dest = dest
         this.amount = amount
+        this._hash = Math.random()
     }
 
-    hash(): Buffer {
-        const buffer = Buffer.allocUnsafe(8)
-        buffer.writeDoubleBE(this.amount)
-        return createHash('sha256')
-            .update(this.orig)
-            .update(this.dest)
-            .update(buffer)
-            .digest()
+    hash(): number {
+        return this._hash
     }
 }
 
 export class Block {
-    static BUFFER_ZERO = Buffer.allocUnsafe(64).fill(0)
     readonly transactions: Transaction[]
-    readonly previousHash: Buffer
-    nonce: number = 0
+    readonly previousHash: number
+    _hash: number
 
-    constructor(transactions: Transaction[] = [], previousHash: Buffer = Buffer.allocUnsafe(0)) {
+    constructor(transactions: Transaction[] = [], previousHash: number = 0) {
         this.transactions = transactions
         this.previousHash = previousHash
+        this._hash = 0
     }
 
-    mine(length: number = 2) {
-        while (!this.isValid(length)){
-            this.nonce++
-        }
+    async mine(maxSeconds: number): Promise<void> {
+        return new Promise<void>(resolve => setTimeout(() => {
+            this._hash = Math.random()
+            resolve()
+        }, Math.round(Math.random() * 1000 * maxSeconds)))
     }
 
-    isValid(length: number = 2): boolean {
-        return Buffer.compare(this.hash().slice(0, length), Block.BUFFER_ZERO.slice(0, length)) === 0
+    isMined(): boolean {
+        return this._hash !== 0
     }
 
-    hash(): Buffer {
-        const hash = createHash('sha256')
-        this.transactions.forEach(it => hash.update(it.hash()))
-        hash.update(this.previousHash)
-        const buffer = Buffer.allocUnsafe(4)
-        buffer.writeUint32BE(this.nonce)
-        hash.update(buffer)
-        return hash.digest()
+    hash(): number {
+        return this._hash
     }
 }
 
@@ -59,7 +48,6 @@ class Chain{
 
     constructor() {
         const initialBlock = new Block()
-        initialBlock.mine()
-        this.blocks.push(initialBlock)
+        initialBlock.mine(5).then(() => this.blocks.push(initialBlock))
     }
 }
